@@ -51,7 +51,7 @@ impl Client {
         stream.write_all(b"\n")?;
         let mut line = String::new();
         BufReader::new(&stream).read_line(&mut line)?;
-        serde_json::from_str(&line).context("reading the daemon's reply")
+        serde_json::from_str(&line).context("reading the daemon's reply; if op-cache was just upgraded, run `op-cache stop` so a fresh daemon starts")
     }
 }
 

@@ -31,6 +31,9 @@ Or grab a binary from the [releases](https://github.com/PatrickTulskie/op-cache/
 It needs the [1Password CLI](https://developer.1password.com/docs/cli/) on your
 `PATH` as `op`.
 
+After upgrading, run `op-cache stop` once so the next call starts a daemon from
+the new build.
+
 ## Use
 
 Export secret references the way you already do for `op run`, then swap `op`
