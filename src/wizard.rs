@@ -256,11 +256,10 @@ fn cached_references(config: &Config) -> Vec<String> {
     let Some(client) = Client::connect(&config.socket_path()) else {
         return Vec::new();
     };
-    let Ok(Response::Status(status)) = client.call(&Request::Status) else {
+    let Ok(Response::Entries { entries }) = client.call(&Request::Inspect) else {
         return Vec::new();
     };
-    let mut refs: Vec<String> = status
-        .entries
+    let mut refs: Vec<String> = entries
         .iter()
         .filter_map(|e| {
             e.key

@@ -49,7 +49,8 @@ token=$(op-cache read $GITHUB_TOKEN)
 | `op-cache read <ref> [op flags]` | The secret, from memory when possible. On a miss it runs `op read` with the same arguments and remembers the answer. |
 | `op-cache run -- <command>` | Runs the command with every `op://` value in the environment resolved, the way `op run` does. |
 | `op-cache config` | Interactive setup of everything below. |
-| `op-cache status` | Whether the daemon is up and which references it holds. |
+| `op-cache status` | Whether the daemon is up and how it's configured. |
+| `op-cache inspect` | Every reference in memory, a masked peek at its value, and when it expires. |
 | `op-cache clear` | Forget every secret, keep the daemon. |
 | `op-cache stop` | Stop the daemon, which forgets everything. |
 | anything else | Handed to `op` unchanged, so `op-cache item list` is just `op item list`. |
@@ -91,7 +92,9 @@ ttl = "until-exit"
 "op://secrets/DEPLOY_KEY/credential" = "5m"
 ```
 
-`op-cache status` shows how long each cached entry has left.
+The wizard offers whatever the daemon currently holds when you add an
+override, so run your usual commands first and pick from the list.
+`op-cache inspect` shows how long each cached entry has left.
 
 The daemon reads `idle_timeout` and `socket` when it starts, so change those
 and then `op-cache stop`; the next call starts a fresh one. `ttl`, `overrides`
@@ -110,7 +113,8 @@ for one invocation.
   hands the result to the daemon. The daemon never talks to 1Password itself.
 - A failed `op read` is not cached, and its exit code and stderr pass through.
 - If the daemon can't be started, `read` and `run` fall back to plain `op`.
-- Secrets never touch disk and never appear on a command line.
+- Secrets never touch disk and never appear on a command line. `inspect` masks
+  values inside the daemon before they cross the socket.
 
 ## Development
 

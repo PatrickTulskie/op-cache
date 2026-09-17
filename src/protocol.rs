@@ -14,6 +14,7 @@ pub enum Request {
     Clear,
     Stop,
     Status,
+    Inspect,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,6 +24,7 @@ pub enum Response {
     Hit { value: Vec<u8> },
     Done,
     Status(Status),
+    Entries { entries: Vec<Entry> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,11 +32,13 @@ pub struct Status {
     pub pid: u32,
     pub uptime_secs: u64,
     pub idle_timeout_secs: Option<u64>,
-    pub entries: Vec<Entry>,
+    pub cached: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Entry {
     pub key: String,
+    /// Enough of the value to recognize it, never the whole thing.
+    pub preview: String,
     pub expires_in_secs: Option<u64>,
 }

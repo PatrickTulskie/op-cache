@@ -50,8 +50,10 @@ enum Cmd {
     },
     /// Configure caching interactively
     Config,
-    /// Show the daemon and what it's holding
+    /// Show whether the daemon is up and how it's configured
     Status,
+    /// List what's in memory, with a masked peek at each value and its expiry
+    Inspect,
     /// Drop every cached secret
     Clear,
     /// Stop the daemon, dropping every cached secret
@@ -88,6 +90,7 @@ fn dispatch(config: &Config) -> Result<()> {
         Some(Cmd::Run { args }) => run(config, &args),
         Some(Cmd::Config) => wizard::run(config.clone()),
         Some(Cmd::Status) => status(config),
+        Some(Cmd::Inspect) => inspect(config),
         Some(Cmd::Clear) => send(config, Request::Clear, "cleared", "nothing to clear"),
         Some(Cmd::Stop) => send(config, Request::Stop, "stopped", "not running"),
         Some(Cmd::Daemon) => daemon::run(config),
@@ -223,18 +226,55 @@ fn status(config: &Config) -> Result<()> {
             ))
             .unwrap_or_else(|| "never".into()),
     );
-    println!("cached   {}", status.entries.len());
-    for entry in status.entries {
-        let left = entry
-            .expires_in_secs
-            .map(|s| {
-                format!(
-                    "  expires in {}",
-                    humantime::format_duration(std::time::Duration::from_secs(s))
-                )
-            })
-            .unwrap_or_default();
-        println!("  {}{left}", entry.key.replace('\u{1f}', " "));
+    println!("cached   {}", status.cached);
+    Ok(())
+}
+
+fn inspect(config: &Config) -> Result<()> {
+    let Some(client) = Client::connect(&config.socket_path()) else {
+        println!("op-cache: not running");
+        return Ok(());
+    };
+    let Response::Entries { entries } = client.call(&Request::Inspect)? else {
+        anyhow::bail!("unexpected reply from the daemon");
+    };
+    if entries.is_empty() {
+        println!("op-cache: nothing cached");
+        return Ok(());
+    }
+    let rows: Vec<(String, String, String)> = entries
+        .into_iter()
+        .map(|e| {
+            let expires = e
+                .expires_in_secs
+                .map(|s| {
+                    format!(
+                        "in {}",
+                        humantime::format_duration(std::time::Duration::from_secs(s))
+                    )
+                })
+                .unwrap_or_else(|| "when the daemon exits".into());
+            (e.key.replace('\u{1f}', " "), e.preview, expires)
+        })
+        .collect();
+    let key_width = rows
+        .iter()
+        .map(|r| r.0.len())
+        .max()
+        .unwrap_or(0)
+        .max("REFERENCE".len());
+    let value_width = rows
+        .iter()
+        .map(|r| r.1.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max("VALUE".len());
+    println!(
+        "{:<key_width$}  {:<value_width$}  EXPIRES",
+        "REFERENCE", "VALUE"
+    );
+    for (key, value, expires) in rows {
+        println!("{key:<key_width$}  {value:<value_width$}  {expires}");
     }
     Ok(())
 }

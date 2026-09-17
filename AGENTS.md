@@ -10,7 +10,7 @@ remotes) still apply. What follows is specific to this repo.
 ## Layout
 
 ```text
-src/main.rs      the CLI: read, run, config, status, clear, stop, and passthrough to op
+src/main.rs      the CLI: read, run, config, status, inspect, clear, stop, and passthrough to op
 src/client.rs    connects to the daemon, spawning it when nothing answers
 src/daemon.rs    serves the cache over a unix socket; one JSON line each way
 src/cache.rs     the store, with expiry

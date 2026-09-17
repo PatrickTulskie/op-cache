@@ -105,16 +105,20 @@ fn serve(
             pid: std::process::id(),
             uptime_secs: started.elapsed().as_secs(),
             idle_timeout_secs,
+            cached: state.cache.entries(now).len(),
+        }),
+        Request::Inspect => Response::Entries {
             entries: state
                 .cache
                 .entries(now)
                 .into_iter()
-                .map(|(key, left)| Entry {
-                    key,
+                .map(|(key, value, left)| Entry {
+                    key: key.to_string(),
+                    preview: mask(value),
                     expires_in_secs: left.map(|d| d.as_secs()),
                 })
                 .collect(),
-        }),
+        },
         Request::Stop => {
             reply(&mut stream, &Response::Done)?;
             shutdown(socket);
@@ -129,7 +133,33 @@ fn reply(stream: &mut UnixStream, response: &Response) -> Result<()> {
     Ok(())
 }
 
+/// Keeps the ends of a long value, enough to tell secrets apart, and hides a
+/// short one completely.
+fn mask(value: &[u8]) -> String {
+    let text = String::from_utf8_lossy(value);
+    let text = text.trim_end_matches(['\n', '\r']);
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < 12 {
+        return "••••••••".to_string();
+    }
+    let head: String = chars[..3].iter().collect();
+    let tail: String = chars[chars.len() - 3..].iter().collect();
+    format!("{head}••••••{tail}")
+}
+
 fn shutdown(socket: &Path) -> ! {
     let _ = fs::remove_file(socket);
     std::process::exit(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mask;
+
+    #[test]
+    fn masking_keeps_only_the_ends_of_long_values() {
+        assert_eq!(mask(b"ghp_abcdefghijklmnop\n"), "ghp••••••nop");
+        assert_eq!(mask(b"short\n"), "••••••••");
+        assert_eq!(mask(b"exactly12chr"), "exa••••••chr");
+    }
 }

@@ -98,9 +98,13 @@ fn read_hits_op_once_until_cleared() {
     );
     assert_eq!(h.op_calls(), ["read op://v/item/field"]);
 
-    let status = h.stdout(&["status"]);
-    assert!(status.contains("cached   1"), "{status}");
-    assert!(status.contains("  op://v/item/field"), "{status}");
+    assert!(h.stdout(&["status"]).contains("cached   1"));
+    let inspect = h.stdout(&["inspect"]);
+    assert!(
+        inspect.contains("op://v/item/field  sec••••••eld  when the daemon exits"),
+        "{inspect}"
+    );
+    assert!(!inspect.contains("secret-for"), "{inspect}");
 
     assert_eq!(h.stdout(&["clear"]), "op-cache: cleared\n");
     h.stdout(&["read", "op://v/item/field"]);
@@ -110,6 +114,7 @@ fn read_hits_op_once_until_cleared() {
     sleep(Duration::from_millis(100));
     assert!(!h.socket().exists());
     assert!(h.stdout(&["status"]).contains("daemon   not running"));
+    assert_eq!(h.stdout(&["inspect"]), "op-cache: not running\n");
     assert_eq!(h.stdout(&["stop"]), "op-cache: not running\n");
 }
 
@@ -156,9 +161,15 @@ fn entries_expire_after_their_ttl_with_overrides_taking_precedence() {
     h.stdout(&["read", "op://v/i/f"]);
     h.stdout(&["read", "op://v/keep/f"]);
     h.stdout(&["read", "op://v/i/f"]);
-    let status = h.stdout(&["status"]);
-    assert!(status.contains("  op://v/i/f  expires in"), "{status}");
-    assert!(status.contains("  op://v/keep/f\n"), "{status}");
+    let inspect = h.stdout(&["inspect"]);
+    assert!(
+        inspect.contains("op://v/i/f     sec••••••i/f  in "),
+        "{inspect}"
+    );
+    assert!(
+        inspect.contains("op://v/keep/f  sec••••••p/f  when the daemon exits"),
+        "{inspect}"
+    );
 
     sleep(Duration::from_millis(1100));
     h.stdout(&["read", "op://v/i/f"]);
@@ -177,7 +188,7 @@ fn failed_reads_are_not_cached_and_keep_their_exit_code() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("no such item"));
     h.run(&["read", "op://v/fail/f"]);
     assert_eq!(h.op_calls().len(), 2);
-    assert!(h.stdout(&["status"]).contains("cached   0"));
+    assert_eq!(h.stdout(&["inspect"]), "op-cache: nothing cached\n");
 }
 
 #[test]
