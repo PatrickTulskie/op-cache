@@ -9,6 +9,7 @@ use console::style;
 
 use crate::client::Client;
 use crate::config::{Config, config_path, default_socket_path, format_lifetime, parse_lifetime};
+use crate::protocol::{Request, Response};
 
 pub fn run(current: Config) -> Result<()> {
     if !(stdin().is_terminal() && stderr().is_terminal()) {
@@ -34,7 +35,7 @@ pub fn run(current: Config) -> Result<()> {
         ),
         "1h",
     )?;
-    let overrides = ask_overrides(current.overrides.clone())?;
+    let overrides = ask_overrides(current.overrides.clone(), cached_references(&current))?;
     let idle_timeout = ask_lifetime(
         "Should the daemon shut down after sitting idle?",
         current.idle_timeout,
@@ -152,6 +153,7 @@ enum Action {
 
 fn ask_overrides(
     mut overrides: BTreeMap<String, Option<Duration>>,
+    cached: Vec<String>,
 ) -> Result<BTreeMap<String, Option<Duration>>> {
     loop {
         let question = if overrides.is_empty() {
@@ -179,16 +181,11 @@ fn ask_overrides(
         match pick {
             Pick::Done => return Ok(overrides),
             Pick::Add => {
-                let reference: String = input("Which reference?")
-                    .placeholder("op://vault/item/field, or op://vault/ for everything in it")
-                    .validate(|s: &String| {
-                        if s.starts_with("op://") {
-                            Ok(())
-                        } else {
-                            Err("that should start with op://")
-                        }
-                    })
-                    .interact()?;
+                let candidates: Vec<&String> = cached
+                    .iter()
+                    .filter(|r| !overrides.contains_key(*r))
+                    .collect();
+                let reference = ask_reference(&candidates)?;
                 let ttl = ask_override_lifetime(None)?;
                 overrides.insert(reference, ttl);
             }
@@ -216,6 +213,65 @@ fn ask_overrides(
             }
         }
     }
+}
+
+/// Offers what the daemon is holding right now, since those are the references
+/// the person has actually been using, with typing one in as the way out.
+fn ask_reference(cached: &[&String]) -> Result<String> {
+    if !cached.is_empty() {
+        let mut menu = select("Which reference?");
+        for reference in cached {
+            menu = menu.item(
+                Some((*reference).clone()),
+                reference.as_str(),
+                "in the cache now",
+            );
+        }
+        if let Some(reference) = menu
+            .item(
+                None,
+                "Type one in",
+                "a reference, or a vault with a trailing /",
+            )
+            .interact()?
+        {
+            return Ok(reference);
+        }
+    }
+    Ok(input("Which reference?")
+        .placeholder("op://vault/item/field, or op://vault/ for everything in it")
+        .validate(|s: &String| {
+            if s.starts_with("op://") {
+                Ok(())
+            } else {
+                Err("that should start with op://")
+            }
+        })
+        .interact()?)
+}
+
+/// The op:// references the running daemon holds, if there is one. Cache keys
+/// are whole `read` argument lists, so the reference is picked out of each.
+fn cached_references(config: &Config) -> Vec<String> {
+    let Some(client) = Client::connect(&config.socket_path()) else {
+        return Vec::new();
+    };
+    let Ok(Response::Status(status)) = client.call(&Request::Status) else {
+        return Vec::new();
+    };
+    let mut refs: Vec<String> = status
+        .entries
+        .iter()
+        .filter_map(|e| {
+            e.key
+                .split('\u{1f}')
+                .find(|a| a.starts_with("op://"))
+                .map(String::from)
+        })
+        .collect();
+    refs.sort();
+    refs.dedup();
+    refs
 }
 
 fn ask_override_lifetime(current: Option<Duration>) -> Result<Option<Duration>> {
