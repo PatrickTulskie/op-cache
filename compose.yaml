@@ -1,0 +1,15 @@
+services:
+  tests:
+    image: rust:1-bookworm
+    working_dir: /work
+    volumes:
+      - .:/work
+      - cargo:/usr/local/cargo/registry
+      - target:/target
+    environment:
+      CARGO_TARGET_DIR: /target
+    command: cargo test
+
+volumes:
+  cargo:
+  target:
