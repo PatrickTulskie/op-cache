@@ -119,7 +119,9 @@ fn run(config: &Config, args: &[OsString]) -> Result<()> {
     };
     let client = Client::connect_or_spawn(&config.socket_path());
     let mut resolved = HashMap::new();
-    for (name, reference) in op_refs(env::vars()) {
+    let vars =
+        env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)));
+    for (name, reference) in op_refs(vars) {
         let mut value = resolve(config, client.as_ref(), &[OsString::from(&reference)])?;
         if value.last() == Some(&b'\n') {
             value.pop();
