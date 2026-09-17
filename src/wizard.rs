@@ -57,20 +57,23 @@ pub fn run(current: Config) -> Result<()> {
         op,
         socket,
     };
-    note(
-        "One last look",
-        format!(
-            "{:<14}{}\n{:<14}{}\n{:<14}{}\n{:<14}{}",
-            style("Secrets live").dim(),
+    let rows = [
+        (
+            "Secrets live",
             format_lifetime(next.ttl, "until the daemon exits"),
-            style("Daemon idles").dim(),
-            format_lifetime(next.idle_timeout, "forever"),
-            style("op binary").dim(),
-            next.op,
-            style("Socket").dim(),
-            next.socket_path().display(),
         ),
-    )?;
+        (
+            "Daemon idles",
+            format_lifetime(next.idle_timeout, "forever"),
+        ),
+        ("op binary", next.op.clone()),
+        ("Socket", next.socket_path().display().to_string()),
+    ];
+    let review: Vec<String> = rows
+        .iter()
+        .map(|(label, value)| format!("{} {value}", style(format!("{label:<13}")).dim()))
+        .collect();
+    note("One last look", review.join("\n"))?;
 
     let path = config_path();
     if !confirm(format!("Write {}?", display_path(&path)))
