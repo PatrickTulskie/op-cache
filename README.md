@@ -80,9 +80,22 @@ runs until you `op-cache stop` or reboot. Set `ttl` to re-read from 1Password
 on a schedule, and `idle_timeout` to have the daemon shut itself down and drop
 everything after a quiet stretch.
 
+Individual references can have their own lifetime, and a key ending in `/`
+covers everything in that vault or item. The most specific match wins:
+
+```toml
+ttl = "until-exit"
+
+[overrides]
+"op://secrets/" = "1h"
+"op://secrets/DEPLOY_KEY/credential" = "5m"
+```
+
+`op-cache status` shows how long each cached entry has left.
+
 The daemon reads `idle_timeout` and `socket` when it starts, so change those
-and then `op-cache stop`; the next call starts a fresh one. `ttl` and `op`
-apply immediately.
+and then `op-cache stop`; the next call starts a fresh one. `ttl`, `overrides`
+and `op` apply immediately.
 
 `OP_CACHE_CONFIG` and `OP_CACHE_SOCKET` override the config and socket paths
 for one invocation.

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -21,6 +22,9 @@ pub struct Config {
     pub idle_timeout: Option<Duration>,
     pub op: String,
     pub socket: Option<PathBuf>,
+    /// Per-reference lifetimes. A key ending in `/` covers everything under it.
+    #[serde(with = "overrides_serde", skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<String, Option<Duration>>,
 }
 
 impl Default for Config {
@@ -30,6 +34,7 @@ impl Default for Config {
             idle_timeout: None,
             op: "op".into(),
             socket: None,
+            overrides: BTreeMap::new(),
         }
     }
 }
@@ -53,6 +58,20 @@ impl Config {
         }
         let text = toml::to_string(self)?;
         fs::write(&path, text).with_context(|| format!("writing {}", path.display()))
+    }
+
+    /// The lifetime for a `read` invocation: the most specific override that
+    /// matches one of its arguments, otherwise the global `ttl`.
+    pub fn ttl_for<S: AsRef<str>>(&self, args: &[S]) -> Option<Duration> {
+        args.iter()
+            .flat_map(|arg| {
+                let arg = arg.as_ref();
+                self.overrides.iter().filter(move |(pattern, _)| {
+                    *pattern == arg || (pattern.ends_with('/') && arg.starts_with(pattern.as_str()))
+                })
+            })
+            .max_by_key(|(pattern, _)| pattern.len())
+            .map_or(self.ttl, |(_, ttl)| *ttl)
     }
 
     pub fn socket_path(&self) -> PathBuf {
@@ -130,6 +149,38 @@ macro_rules! lifetime_serde {
 lifetime_serde!(ttl_serde, "until-exit");
 lifetime_serde!(idle_serde, "never");
 
+mod overrides_serde {
+    use super::*;
+    use serde::{Deserializer, Serializer, de::Error};
+
+    pub fn serialize<S: Serializer>(
+        map: &BTreeMap<String, Option<Duration>>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        let rendered: BTreeMap<&str, String> = map
+            .iter()
+            .map(|(k, d)| (k.as_str(), format_lifetime(*d, "until-exit")))
+            .collect();
+        rendered.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<String, Option<Duration>>, D::Error> {
+        BTreeMap::<String, String>::deserialize(d)?
+            .into_iter()
+            .map(|(k, v)| {
+                if !k.starts_with("op://") {
+                    return Err(D::Error::custom(format!(
+                        "override {k:?} should be an op:// reference"
+                    )));
+                }
+                Ok((k, parse_lifetime(&v).map_err(D::Error::custom)?))
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +203,38 @@ mod tests {
         assert!(toml::to_string(&cfg).unwrap().contains("ttl = \"1h 30m\""));
         assert!(toml::from_str::<Config>("ttl = \"soon\"").is_err());
         assert!(toml::from_str::<Config>("bogus = 1").is_err());
+    }
+
+    #[test]
+    fn the_most_specific_override_wins() {
+        let cfg: Config = toml::from_str(
+            r#"
+ttl = "1h"
+[overrides]
+"op://vault/" = "5m"
+"op://vault/item/field" = "until-exit"
+"#,
+        )
+        .unwrap();
+        let hour = Some(Duration::from_secs(3600));
+        assert_eq!(cfg.ttl_for(&["op://other/item/field"]), hour);
+        assert_eq!(
+            cfg.ttl_for(&["--account", "work", "op://vault/x/y"]),
+            Some(Duration::from_secs(300))
+        );
+        assert_eq!(cfg.ttl_for(&["op://vault/item/field"]), None);
+        assert_eq!(cfg.ttl_for(&["op://vault"]), hour);
+        assert!(
+            toml::to_string(&cfg)
+                .unwrap()
+                .contains("\"op://vault/item/field\" = \"until-exit\"")
+        );
+        assert!(
+            !toml::to_string(&Config::default())
+                .unwrap()
+                .contains("overrides")
+        );
+        assert!(toml::from_str::<Config>("[overrides]\nnope = \"5m\"").is_err());
     }
 
     #[test]

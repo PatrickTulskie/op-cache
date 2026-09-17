@@ -181,7 +181,9 @@ fn resolve(config: &Config, client: Option<&Client>, args: &[OsString]) -> Resul
         let _ = client.call(&Request::Put {
             key,
             value: output.stdout.clone(),
-            ttl_secs: config.ttl.map(|d| d.as_secs()),
+            ttl_secs: config
+                .ttl_for(&args.iter().map(|a| a.to_string_lossy()).collect::<Vec<_>>())
+                .map(|d| d.as_secs()),
         });
     }
     Ok(output.stdout)
@@ -221,9 +223,18 @@ fn status(config: &Config) -> Result<()> {
             ))
             .unwrap_or_else(|| "never".into()),
     );
-    println!("cached   {}", status.keys.len());
-    for key in status.keys {
-        println!("  {}", key.replace('\u{1f}', " "));
+    println!("cached   {}", status.entries.len());
+    for entry in status.entries {
+        let left = entry
+            .expires_in_secs
+            .map(|s| {
+                format!(
+                    "  expires in {}",
+                    humantime::format_duration(std::time::Duration::from_secs(s))
+                )
+            })
+            .unwrap_or_default();
+        println!("  {}{left}", entry.key.replace('\u{1f}', " "));
     }
     Ok(())
 }

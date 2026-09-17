@@ -12,7 +12,7 @@ use fs2::FileExt;
 
 use crate::cache::Cache;
 use crate::config::Config;
-use crate::protocol::{Request, Response, Status};
+use crate::protocol::{Entry, Request, Response, Status};
 
 struct State {
     cache: Cache,
@@ -105,7 +105,15 @@ fn serve(
             pid: std::process::id(),
             uptime_secs: started.elapsed().as_secs(),
             idle_timeout_secs,
-            keys: state.cache.keys(now),
+            entries: state
+                .cache
+                .entries(now)
+                .into_iter()
+                .map(|(key, left)| Entry {
+                    key,
+                    expires_in_secs: left.map(|d| d.as_secs()),
+                })
+                .collect(),
         }),
         Request::Stop => {
             reply(&mut stream, &Response::Done)?;

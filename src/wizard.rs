@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::{IsTerminal, stderr, stdin};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -33,6 +34,7 @@ pub fn run(current: Config) -> Result<()> {
         ),
         "1h",
     )?;
+    let overrides = ask_overrides(current.overrides.clone())?;
     let idle_timeout = ask_lifetime(
         "Should the daemon shut down after sitting idle?",
         current.idle_timeout,
@@ -56,19 +58,30 @@ pub fn run(current: Config) -> Result<()> {
         idle_timeout,
         op,
         socket,
+        overrides,
     };
-    let rows = [
-        (
-            "Secrets live",
-            format_lifetime(next.ttl, "until the daemon exits"),
-        ),
+    let mut rows = vec![(
+        "Secrets live",
+        format_lifetime(next.ttl, "until the daemon exits"),
+    )];
+    for (i, (reference, ttl)) in next.overrides.iter().enumerate() {
+        let label = if i == 0 { "Except" } else { "" };
+        rows.push((
+            label,
+            format!(
+                "{reference}  {}",
+                format_lifetime(*ttl, "until the daemon exits")
+            ),
+        ));
+    }
+    rows.extend([
         (
             "Daemon idles",
             format_lifetime(next.idle_timeout, "forever"),
         ),
         ("op binary", next.op.clone()),
         ("Socket", next.socket_path().display().to_string()),
-    ];
+    ]);
     let review: Vec<String> = rows
         .iter()
         .map(|(label, value)| format!("{} {value}", style(format!("{label:<13}")).dim()))
@@ -121,6 +134,98 @@ fn ask_lifetime(
         })
         .interact()?;
     Ok(parse_lifetime(&answer).unwrap_or(None))
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum Pick {
+    Edit(String),
+    Add,
+    Done,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Change,
+    Remove,
+    Keep,
+}
+
+fn ask_overrides(
+    mut overrides: BTreeMap<String, Option<Duration>>,
+) -> Result<BTreeMap<String, Option<Duration>>> {
+    loop {
+        let question = if overrides.is_empty() {
+            "Should any references live for a different length?"
+        } else {
+            "These references have their own lifetime. Anything to change?"
+        };
+        let mut menu = select(question);
+        for (reference, ttl) in &overrides {
+            menu = menu.item(
+                Pick::Edit(reference.clone()),
+                reference.as_str(),
+                format_lifetime(*ttl, "until the daemon exits"),
+            );
+        }
+        let pick = menu
+            .item(
+                Pick::Add,
+                "Add a reference",
+                "or a whole vault, with a trailing /",
+            )
+            .item(Pick::Done, "No, move on", "")
+            .initial_value(Pick::Done)
+            .interact()?;
+        match pick {
+            Pick::Done => return Ok(overrides),
+            Pick::Add => {
+                let reference: String = input("Which reference?")
+                    .placeholder("op://vault/item/field, or op://vault/ for everything in it")
+                    .validate(|s: &String| {
+                        if s.starts_with("op://") {
+                            Ok(())
+                        } else {
+                            Err("that should start with op://")
+                        }
+                    })
+                    .interact()?;
+                let ttl = ask_override_lifetime(None)?;
+                overrides.insert(reference, ttl);
+            }
+            Pick::Edit(reference) => {
+                let action = select(&reference)
+                    .item(Action::Change, "Change how long it lives", "")
+                    .item(
+                        Action::Remove,
+                        "Remove the override",
+                        "back to the global setting",
+                    )
+                    .item(Action::Keep, "Leave it", "")
+                    .initial_value(Action::Keep)
+                    .interact()?;
+                match action {
+                    Action::Change => {
+                        let ttl = ask_override_lifetime(overrides[&reference])?;
+                        overrides.insert(reference, ttl);
+                    }
+                    Action::Remove => {
+                        overrides.remove(&reference);
+                    }
+                    Action::Keep => {}
+                }
+            }
+        }
+    }
+}
+
+fn ask_override_lifetime(current: Option<Duration>) -> Result<Option<Duration>> {
+    ask_lifetime(
+        "How long should it live?",
+        current,
+        ("Until the daemon exits", ""),
+        ("For a fixed duration", ""),
+        "10m",
+    )
 }
 
 fn ask_socket(current: Option<PathBuf>) -> Result<Option<PathBuf>> {

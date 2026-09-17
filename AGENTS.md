@@ -46,6 +46,8 @@ it on drop; keep that working when adding scenarios.
   subcommands, leading flags, `run` with flags before `--`, `read -o`.
 - The cache key for `read` is the full argument list, so `--account` and
   friends never cross-contaminate.
+- A reference's lifetime is the most specific `[overrides]` match, where a
+  key ending in `/` covers everything under it, otherwise the global `ttl`.
 - A failed `op read` is never cached and its exit code is passed through.
 - With no daemon reachable, `read` and `run` still work; they just call `op`.
 - The socket is mode 600 and lives in a per-user directory. Secrets never

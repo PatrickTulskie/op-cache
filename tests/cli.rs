@@ -151,13 +151,22 @@ fn run_resolves_op_references_in_the_environment() {
 }
 
 #[test]
-fn entries_expire_after_the_configured_ttl() {
-    let h = Harness::new("ttl = \"1s\"");
+fn entries_expire_after_their_ttl_with_overrides_taking_precedence() {
+    let h = Harness::new("ttl = \"1s\"\n[overrides]\n\"op://v/keep/\" = \"until-exit\"\n");
     h.stdout(&["read", "op://v/i/f"]);
+    h.stdout(&["read", "op://v/keep/f"]);
     h.stdout(&["read", "op://v/i/f"]);
+    let status = h.stdout(&["status"]);
+    assert!(status.contains("  op://v/i/f  expires in"), "{status}");
+    assert!(status.contains("  op://v/keep/f\n"), "{status}");
+
     sleep(Duration::from_millis(1100));
     h.stdout(&["read", "op://v/i/f"]);
-    assert_eq!(h.op_calls().len(), 2);
+    h.stdout(&["read", "op://v/keep/f"]);
+    assert_eq!(
+        h.op_calls(),
+        ["read op://v/i/f", "read op://v/keep/f", "read op://v/i/f"]
+    );
 }
 
 #[test]

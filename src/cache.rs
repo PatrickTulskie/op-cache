@@ -32,15 +32,16 @@ impl Cache {
         self.entries.clear();
     }
 
-    pub fn keys(&self, now: Instant) -> Vec<String> {
-        let mut keys: Vec<String> = self
+    /// Live keys with how long each has left, sorted by key.
+    pub fn entries(&self, now: Instant) -> Vec<(String, Option<Duration>)> {
+        let mut entries: Vec<_> = self
             .entries
             .iter()
             .filter(|(_, e)| e.expires_at.is_none_or(|t| t > now))
-            .map(|(k, _)| k.clone())
+            .map(|(k, e)| (k.clone(), e.expires_at.map(|t| t - now)))
             .collect();
-        keys.sort();
-        keys
+        entries.sort();
+        entries
     }
 }
 
@@ -63,14 +64,20 @@ mod tests {
         let later = t0 + Duration::from_secs(5);
         assert_eq!(cache.get("forever", later), Some(&b"a"[..]));
         assert_eq!(cache.get("brief", later), Some(&b"b"[..]));
-        assert_eq!(cache.keys(later), vec!["brief", "forever"]);
+        assert_eq!(
+            cache.entries(later),
+            vec![
+                ("brief".into(), Some(Duration::from_secs(5))),
+                ("forever".into(), None)
+            ]
+        );
 
         let expired = t0 + Duration::from_secs(10);
-        assert_eq!(cache.keys(expired), vec!["forever"]);
+        assert_eq!(cache.entries(expired), vec![("forever".into(), None)]);
         assert_eq!(cache.get("brief", expired), None);
         assert_eq!(cache.get("forever", expired), Some(&b"a"[..]));
 
         cache.clear();
-        assert!(cache.keys(expired).is_empty());
+        assert!(cache.entries(expired).is_empty());
     }
 }

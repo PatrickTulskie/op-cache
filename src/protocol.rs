@@ -30,5 +30,11 @@ pub struct Status {
     pub pid: u32,
     pub uptime_secs: u64,
     pub idle_timeout_secs: Option<u64>,
-    pub keys: Vec<String>,
+    pub entries: Vec<Entry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Entry {
+    pub key: String,
+    pub expires_in_secs: Option<u64>,
 }
