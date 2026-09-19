@@ -3,6 +3,7 @@ mod client;
 mod config;
 mod daemon;
 mod op;
+mod prompt;
 mod protocol;
 mod wizard;
 

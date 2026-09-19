@@ -17,6 +17,7 @@ src/cache.rs     the store, with expiry
 src/protocol.rs  the request and response shapes
 src/config.rs    ~/.config/op-cache/config.toml, socket and config paths
 src/wizard.rs    the interactive `op-cache config`
+src/prompt.rs    the wizard's clack-style prompts: select, input, confirm
 src/op.rs        running the real op
 tests/cli.rs     end-to-end, against a stub op
 ```

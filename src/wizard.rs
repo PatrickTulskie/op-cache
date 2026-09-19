@@ -4,11 +4,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use cliclack::{confirm, input, intro, log, note, outro, outro_cancel, select};
 use console::style;
 
 use crate::client::Client;
 use crate::config::{Config, config_path, default_socket_path, format_lifetime, parse_lifetime};
+use crate::prompt::{confirm, input, intro, note, outro, outro_cancel, remark, select, warning};
 use crate::protocol::{Request, Response};
 
 pub fn run(current: Config) -> Result<()> {
@@ -18,7 +18,7 @@ pub fn run(current: Config) -> Result<()> {
     }
 
     intro(style(" op-cache ").on_cyan().black())?;
-    log::remark(
+    remark(
         "Secrets are held in memory by a background daemon.\nThese settings decide how long they stay there.",
     )?;
 
@@ -102,7 +102,7 @@ pub fn run(current: Config) -> Result<()> {
     let daemon_affected =
         next.idle_timeout != current.idle_timeout || next.socket != current.socket;
     if daemon_affected && Client::connect(&current.socket_path()).is_some() {
-        log::warning(
+        warning(
             "A daemon is already running with the old settings. Run `op-cache stop` to restart it.",
         )?;
     }
