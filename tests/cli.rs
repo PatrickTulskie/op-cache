@@ -227,7 +227,17 @@ fn help_version_and_misuse_never_reach_op() {
         h.stdout(&["--version"]),
         concat!("op-cache ", env!("CARGO_PKG_VERSION"), "\n")
     );
-    for args in [&["read"][..], &["status", "extra"], &["help", "bogus"]] {
+    assert!(
+        h.stdout(&["daemon", "--help"])
+            .contains("Usage: op-cache [COMMAND]")
+    );
+    for args in [
+        &["read"][..],
+        &["status", "extra"],
+        &["daemon", "extra"],
+        &["help", "bogus"],
+        &["help", "status", "extra"],
+    ] {
         assert_eq!(h.run(args).status.code(), Some(2), "{args:?}");
     }
     assert!(h.op_calls().is_empty());
