@@ -15,7 +15,6 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, exit};
 
 use anyhow::Result;
-use clap::{CommandFactory, Parser, Subcommand};
 
 use client::Client;
 use config::Config;
@@ -23,47 +22,29 @@ use protocol::{Request, Response};
 
 const OP_REF_PREFIX: &str = "op://";
 
-/// A read-through, in-memory cache in front of the 1Password CLI.
-///
-/// Anything op-cache doesn't handle itself is passed straight to `op`.
-#[derive(Parser)]
-#[command(version, about, long_about = None, allow_external_subcommands = true)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Cmd>,
-}
+const HELP: &str = concat!(
+    env!("CARGO_PKG_DESCRIPTION"),
+    "
 
-#[derive(Subcommand)]
-enum Cmd {
-    /// Read a secret reference, from the cache when it's there
-    #[command(disable_help_flag = true)]
-    Read {
-        /// Passed to `op read` verbatim on a miss; the whole list is the cache key
-        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<OsString>,
-    },
-    /// Run a command with its op:// environment variables resolved
-    #[command(disable_help_flag = true)]
-    Run {
-        /// The command; anything before `--` is handed to `op run` instead
-        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<OsString>,
-    },
-    /// Configure caching interactively
-    Config,
-    /// Show whether the daemon is up and how it's configured
-    Status,
-    /// List what's in memory, with a masked peek at each value and its expiry
-    Inspect,
-    /// Drop every cached secret
-    Clear,
-    /// Stop the daemon, dropping every cached secret
-    Stop,
-    #[command(hide = true)]
-    Daemon,
-    #[command(external_subcommand)]
-    Op(Vec<OsString>),
-}
+Usage: op-cache [COMMAND]
+
+Commands:
+  read     Read a secret reference, from the cache when it's there
+  run      Run a command with its op:// environment variables resolved
+  config   Configure caching interactively
+  status   Show whether the daemon is up and how it's configured
+  inspect  List what's in memory, with a masked peek at each value and its expiry
+  clear    Drop every cached secret
+  stop     Stop the daemon, dropping every cached secret
+  help     Print this message
+
+Anything else is passed straight to `op`.
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+"
+);
 
 fn main() {
     let config = match Config::load() {
@@ -81,27 +62,34 @@ fn fail(e: anyhow::Error) -> ! {
 }
 
 fn dispatch(config: &Config) -> Result<()> {
-    let raw: Vec<OsString> = env::args_os().skip(1).collect();
-    if raw.first().is_some_and(is_op_flag) {
-        return Err(op::exec(&config.op, &raw));
+    let args: Vec<OsString> = env::args_os().skip(1).collect();
+    let words: Vec<&str> = args
+        .iter()
+        .map(|a| a.to_str().unwrap_or_default())
+        .collect();
+    match words.as_slice() {
+        [] | ["-h" | "--help" | "help"] => {
+            print!("{HELP}");
+            Ok(())
+        }
+        ["-V" | "--version"] => {
+            println!("op-cache {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        ["read", _, ..] => read(config, &args[1..]),
+        ["run", _, ..] => run(config, &args[1..]),
+        [command @ ("read" | "run")] => {
+            eprintln!("op-cache: {command} needs arguments; see op-cache --help");
+            exit(2)
+        }
+        ["config"] => wizard::run(config.clone()),
+        ["status"] => status(config),
+        ["inspect"] => inspect(config),
+        ["clear"] => send(config, Request::Clear, "cleared", "nothing to clear"),
+        ["stop"] => send(config, Request::Stop, "stopped", "not running"),
+        ["daemon"] => daemon::run(config),
+        _ => Err(op::exec(&config.op, &args)),
     }
-    match Cli::parse().command {
-        None => Ok(Cli::command().print_help()?),
-        Some(Cmd::Read { args }) => read(config, &args),
-        Some(Cmd::Run { args }) => run(config, &args),
-        Some(Cmd::Config) => wizard::run(config.clone()),
-        Some(Cmd::Status) => status(config),
-        Some(Cmd::Inspect) => inspect(config),
-        Some(Cmd::Clear) => send(config, Request::Clear, "cleared", "nothing to clear"),
-        Some(Cmd::Stop) => send(config, Request::Stop, "stopped", "not running"),
-        Some(Cmd::Daemon) => daemon::run(config),
-        Some(Cmd::Op(args)) => Err(op::exec(&config.op, &args)),
-    }
-}
-
-fn is_op_flag(arg: &OsString) -> bool {
-    let s = arg.to_string_lossy();
-    s.starts_with('-') && !matches!(s.as_ref(), "-h" | "--help" | "-V" | "--version")
 }
 
 fn read(config: &Config, args: &[OsString]) -> Result<()> {
@@ -332,12 +320,5 @@ mod tests {
                 ("TOKEN".to_string(), "op://vault/item/field".to_string()),
             ]
         );
-    }
-
-    #[test]
-    fn leading_flags_go_to_op_except_help_and_version() {
-        assert!(is_op_flag(&OsString::from("--account")));
-        assert!(!is_op_flag(&OsString::from("--help")));
-        assert!(!is_op_flag(&OsString::from("read")));
     }
 }
