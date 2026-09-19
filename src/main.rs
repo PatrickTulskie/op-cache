@@ -71,14 +71,15 @@ fn dispatch(config: &Config) -> Result<()> {
         .map(|a| a.to_str().unwrap_or_default())
         .collect();
     match words.as_slice() {
-        [] | ["help"] | ["-h" | "--help", ..] => show(help()),
+        [] | ["help"] | ["help", "help" | "daemon"] | ["-h" | "--help", ..] => show(help()),
         ["-V" | "--version", ..] => show(format!("op-cache {}\n", env!("CARGO_PKG_VERSION"))),
-        ["help", name, ..] => match command_help(name) {
+        ["help", name] => match command_help(name) {
             Some(text) => show(text),
             None => usage_error(&format!("unrecognized command '{name}'")),
         },
+        ["help", _, extra, ..] => usage_error(&format!("unexpected argument '{extra}'")),
         [name, rest @ ..] if takes_no_args(name) && !rest.is_empty() => match rest {
-            ["-h" | "--help"] => show(command_help(name).unwrap_or_default()),
+            ["-h" | "--help", ..] => show(command_help(name).unwrap_or_else(help)),
             _ => usage_error(&format!("unexpected argument '{}' for {name}", rest[0])),
         },
         ["read", _, ..] => read(config, &args[1..]),
@@ -105,7 +106,7 @@ fn usage_error(message: &str) -> ! {
 }
 
 fn takes_no_args(name: &str) -> bool {
-    COMMANDS.iter().any(|c| c.0 == name && c.2.is_empty())
+    name == "daemon" || COMMANDS.iter().any(|c| c.0 == name && c.2.is_empty())
 }
 
 fn help() -> String {
