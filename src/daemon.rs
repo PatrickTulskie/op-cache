@@ -8,7 +8,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use fs2::FileExt;
 
 use crate::cache::Cache;
 use crate::config::Config;
@@ -26,7 +25,7 @@ pub fn run(config: &Config) -> Result<()> {
     let lock_path = socket.with_extension("lock");
     let lock =
         File::create(&lock_path).with_context(|| format!("creating {}", lock_path.display()))?;
-    if lock.try_lock_exclusive().is_err() {
+    if lock.try_lock().is_err() {
         return Ok(());
     }
 
