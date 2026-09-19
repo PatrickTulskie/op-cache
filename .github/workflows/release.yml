@@ -9,7 +9,25 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          version="v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+
   build:
+    needs: [test, version]
     name: ${{ matrix.target }}
     strategy:
       matrix:
@@ -45,7 +63,9 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - run: gh release create "$TAG" --generate-notes dist/*.tar.gz
+      - run: shasum -a 256 *.tar.gz > SHA256SUMS
+        working-directory: dist
+      - run: gh release create "$TAG" --generate-notes dist/*
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
