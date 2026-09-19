@@ -22,29 +22,32 @@ use protocol::{Request, Response};
 
 const OP_REF_PREFIX: &str = "op://";
 
-const HELP: &str = concat!(
-    env!("CARGO_PKG_DESCRIPTION"),
-    "
-
-Usage: op-cache [COMMAND]
-
-Commands:
-  read     Read a secret reference, from the cache when it's there
-  run      Run a command with its op:// environment variables resolved
-  config   Configure caching interactively
-  status   Show whether the daemon is up and how it's configured
-  inspect  List what's in memory, with a masked peek at each value and its expiry
-  clear    Drop every cached secret
-  stop     Stop the daemon, dropping every cached secret
-  help     Print this message
-
-Anything else is passed straight to `op`.
-
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-"
-);
+/// Each command's name, what it does, and what its arguments are if it takes any.
+const COMMANDS: &[(&str, &str, &str)] = &[
+    (
+        "read",
+        "Read a secret reference, from the cache when it's there",
+        "Passed to `op read` verbatim on a miss; the whole list is the cache key",
+    ),
+    (
+        "run",
+        "Run a command with its op:// environment variables resolved",
+        "The command; anything before `--` is handed to `op run` instead",
+    ),
+    ("config", "Configure caching interactively", ""),
+    (
+        "status",
+        "Show whether the daemon is up and how it's configured",
+        "",
+    ),
+    (
+        "inspect",
+        "List what's in memory, with a masked peek at each value and its expiry",
+        "",
+    ),
+    ("clear", "Drop every cached secret", ""),
+    ("stop", "Stop the daemon, dropping every cached secret", ""),
+];
 
 fn main() {
     let config = match Config::load() {
@@ -68,20 +71,19 @@ fn dispatch(config: &Config) -> Result<()> {
         .map(|a| a.to_str().unwrap_or_default())
         .collect();
     match words.as_slice() {
-        [] | ["-h" | "--help" | "help"] => {
-            print!("{HELP}");
-            Ok(())
-        }
-        ["-V" | "--version"] => {
-            println!("op-cache {}", env!("CARGO_PKG_VERSION"));
-            Ok(())
-        }
+        [] | ["help"] | ["-h" | "--help", ..] => show(help()),
+        ["-V" | "--version", ..] => show(format!("op-cache {}\n", env!("CARGO_PKG_VERSION"))),
+        ["help", name, ..] => match command_help(name) {
+            Some(text) => show(text),
+            None => usage_error(&format!("unrecognized command '{name}'")),
+        },
+        [name, rest @ ..] if takes_no_args(name) && !rest.is_empty() => match rest {
+            ["-h" | "--help"] => show(command_help(name).unwrap_or_default()),
+            _ => usage_error(&format!("unexpected argument '{}' for {name}", rest[0])),
+        },
         ["read", _, ..] => read(config, &args[1..]),
         ["run", _, ..] => run(config, &args[1..]),
-        [command @ ("read" | "run")] => {
-            eprintln!("op-cache: {command} needs arguments; see op-cache --help");
-            exit(2)
-        }
+        [name @ ("read" | "run")] => usage_error(&format!("{name} needs arguments")),
         ["config"] => wizard::run(config.clone()),
         ["status"] => status(config),
         ["inspect"] => inspect(config),
@@ -90,6 +92,47 @@ fn dispatch(config: &Config) -> Result<()> {
         ["daemon"] => daemon::run(config),
         _ => Err(op::exec(&config.op, &args)),
     }
+}
+
+fn show(text: String) -> Result<()> {
+    print!("{text}");
+    Ok(())
+}
+
+fn usage_error(message: &str) -> ! {
+    eprintln!("op-cache: {message}; see op-cache --help");
+    exit(2)
+}
+
+fn takes_no_args(name: &str) -> bool {
+    COMMANDS.iter().any(|c| c.0 == name && c.2.is_empty())
+}
+
+fn help() -> String {
+    let mut out = format!(
+        "{}\n\nUsage: op-cache [COMMAND]\n\nCommands:\n",
+        env!("CARGO_PKG_DESCRIPTION")
+    );
+    for (name, about, _) in COMMANDS {
+        out += &format!("  {name:<8} {about}\n");
+    }
+    out + "  help     Print this message or the help of the given command
+
+Anything else is passed straight to `op`.
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+"
+}
+
+fn command_help(name: &str) -> Option<String> {
+    let (_, about, args) = COMMANDS.iter().find(|c| c.0 == name)?;
+    Some(if args.is_empty() {
+        format!("{about}\n\nUsage: op-cache {name}\n")
+    } else {
+        format!("{about}\n\nUsage: op-cache {name} <ARGS>...\n\nArguments:\n  <ARGS>...  {args}\n")
+    })
 }
 
 fn read(config: &Config, args: &[OsString]) -> Result<()> {

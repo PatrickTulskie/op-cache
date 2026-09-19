@@ -211,15 +211,24 @@ fn everything_else_goes_to_op() {
 }
 
 #[test]
-fn help_version_and_bare_read_never_reach_op() {
+fn help_version_and_misuse_never_reach_op() {
     let h = Harness::new("");
     for args in [&[][..], &["--help"], &["help"]] {
         assert!(h.stdout(args).contains("Usage: op-cache [COMMAND]"));
     }
+    for args in [["help", "status"], ["status", "--help"]] {
+        assert!(h.stdout(&args).contains("Usage: op-cache status\n"));
+    }
+    assert!(
+        h.stdout(&["help", "read"])
+            .contains("Usage: op-cache read <ARGS>...")
+    );
     assert_eq!(
         h.stdout(&["--version"]),
         concat!("op-cache ", env!("CARGO_PKG_VERSION"), "\n")
     );
-    assert_eq!(h.run(&["read"]).status.code(), Some(2));
+    for args in [&["read"][..], &["status", "extra"], &["help", "bogus"]] {
+        assert_eq!(h.run(args).status.code(), Some(2), "{args:?}");
+    }
     assert!(h.op_calls().is_empty());
 }
