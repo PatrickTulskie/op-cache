@@ -23,13 +23,35 @@ real    0m0.015s
 
 ## Install
 
+op-cache needs the [1Password CLI](https://developer.1password.com/docs/cli/)
+on your `PATH` as `op`.
+
+<details open>
+<summary><b>Homebrew</b> (macOS and Linux)</summary>
+
+```bash
+brew install PatrickTulskie/tap/op-cache
+```
+
+</details>
+
+<details>
+<summary><b>Prebuilt binary</b></summary>
+
+Every [release](https://github.com/PatrickTulskie/op-cache/releases) has a
+tarball for macOS and Linux on arm64 and x86_64, plus a `SHA256SUMS` file.
+Unpack `op-cache` somewhere on your `PATH`.
+
+</details>
+
+<details>
+<summary><b>From source</b></summary>
+
 ```bash
 cargo install --git https://github.com/PatrickTulskie/op-cache
 ```
 
-Or grab a binary from the [releases](https://github.com/PatrickTulskie/op-cache/releases).
-It needs the [1Password CLI](https://developer.1password.com/docs/cli/) on your
-`PATH` as `op`.
+</details>
 
 After upgrading, run `op-cache stop` once so the next call starts a daemon from
 the new build.
